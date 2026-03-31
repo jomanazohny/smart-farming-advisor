@@ -1,3 +1,4 @@
+import React from "react";
 import {
   View,
   Text,
@@ -5,148 +6,219 @@ import {
   ScrollView,
   SafeAreaView,
   Pressable,
+  Platform,
 } from "react-native";
-import { useLocalSearchParams, router } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 export default function ResultScreen() {
   const { data } = useLocalSearchParams();
+  const router = useRouter();
+
   if (!data) return null;
 
-  const r = JSON.parse(data as string);
-  const confidence = Number(r.confidence) || 0;
+  // Safe parsing
+  let r;
+  try {
+    r = JSON.parse(data as string);
+  } catch (e) {
+    return <Text>Error loading data</Text>;
+  }
 
-  const confidenceLevel =
-    confidence >= 70 ? "high" : confidence >= 40 ? "medium" : "low";
+  const disease = r.disease_name || "غير معروف";
+  const confidence = Number(r.confidence) || 0;
+  const explanation = r.arabic_explanation || {};
+
+  const cause = explanation["السبب"] || "غير متوفر";
+  const treatment = explanation["العلاج"] || "غير متوفر";
+  const prevention = explanation["الوقاية"] || "غير متوفر";
+
+  const isHigh = confidence >= 70;
+  const isMedium = confidence >= 40 && confidence < 70;
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.container}>
-        {/* Header */}
-        <View style={styles.headerRow}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={24} color="#2e7d32" />
-          </Pressable>
-          <Text style={styles.header}>نتيجة التشخيص</Text>
+      {/* 🟢 CUSTOM HEADER */}
+      <View style={styles.headerBar}>
+        <Pressable onPress={() => router.back()} style={styles.backCircle}>
+          <Ionicons name="chevron-forward" size={28} color="#2e7d32" />
+        </Pressable>
+        <Text style={styles.headerTitle}>تحليل الذكاء الاصطناعي</Text>
+        <View style={{ width: 40 }} /> 
+      </View>
+
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        
+        {/* 📈 CONFIDENCE METER */}
+        <View style={styles.statusCard}>
+          <View style={styles.statusRow}>
+            <Text style={styles.statusLabel}>دقة التشخيص</Text>
+            <Text style={[styles.statusValue, { color: isHigh ? "#2e7d32" : "#f57c00" }]}>
+              {confidence.toFixed(1)}%
+            </Text>
+          </View>
+          <View style={styles.progressBg}>
+            <View style={[styles.progressFill, { width: `${confidence}%`, backgroundColor: isHigh ? "#2e7d32" : "#fbc02d" }]} />
+          </View>
         </View>
 
-        {/* Confidence always visible */}
-        <Card
-          title="📊 نسبة الثقة"
-          value={`${confidence}%`}
-          highlight={confidenceLevel === "high"}
-        />
+        {/* 🦠 MAIN RESULT */}
+        <View style={styles.resultCard}>
+          <View style={styles.iconCircle}>
+            <Ionicons name="bug" size={30} color="#fff" />
+          </View>
+          <Text style={styles.resultLabel}>الحالة المكتشفة:</Text>
+          <Text style={styles.resultName}>{disease}</Text>
+        </View>
 
-        {/* LOW CONFIDENCE */}
-        {confidenceLevel === "low" && (
-          <>
-            <Card
-              title="🦠 المرض المحتمل"
-              value={r.disease || "غير محدد"}
-            />
-            <Card
-              title="⚠️ ملاحظة مهمة"
-              value="الثقة في هذا التشخيص منخفضة. قد تكون الصورة غير واضحة أو لا تظهر أعراضًا كافية."
-            />
-            <Card
-              title="📌 ماذا يمكنك فعله؟"
-              value="أعد التقاط صورة واضحة في إضاءة جيدة، مع التركيز على الورقة المصابة، أو استشر مهندسًا زراعيًا للحصول على تشخيص أدق."
-            />
-          </>
-        )}
+        {/* 📋 DETAILED BREAKDOWN */}
+        <View style={styles.detailsSection}>
+          
+          <DetailCard 
+            icon="alert-circle" 
+            title="السبب المحتمل" 
+            value={cause} 
+            color="#d32f2f" 
+          />
 
-        {/* MEDIUM CONFIDENCE */}
-        {confidenceLevel === "medium" && (
-          <>
-            <Card
-              title="🦠 المرض المحتمل"
-              value={r.disease}
+          {(isHigh || isMedium) && (
+            <DetailCard 
+              icon="medkit" 
+              title="العلاج المقترح" 
+              value={treatment} 
+              color="#2e7d32" 
             />
-            <Card
-              title="❗ أسباب محتملة"
-              value={
-                r.cause ||
-                "قد يكون ناتجًا عن إجهاد نباتي، رطوبة زائدة، أو نقص عناصر غذائية."
-              }
-            />
-            <Card
-              title="💊 نصائح عامة"
-              value="راقب النبات خلال الأيام القادمة، حسّن التهوية والري، ويمكن استخدام علاج وقائي عام."
-            />
-          </>
-        )}
+          )}
 
-        {/* HIGH CONFIDENCE */}
-        {confidenceLevel === "high" && (
-          <>
-            <Card title="🦠 المرض" value={r.disease} />
-            <Card title="❗ السبب" value={r.cause} />
-            <Card title="💊 العلاج" value={r.treatment} />
-            <Card title="🛡️ الوقاية" value={r.prevention} />
-          </>
-        )}
+          {isHigh && (
+            <DetailCard 
+              icon="shield-checkmark" 
+              title="خطوات الوقاية" 
+              value={prevention} 
+              color="#1976d2" 
+            />
+          )}
+
+          {!isHigh && (
+            <View style={styles.warningBox}>
+              <Ionicons name="information-circle" size={20} color="#666" />
+              <Text style={styles.warningText}>
+                نوصي بإعادة التصوير في إضاءة أفضل للحصول على دقة أعلى.
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* 🔄 ACTION BUTTON */}
+        <Pressable style={styles.doneBtn} onPress={() => router.replace("/")}>
+          <Text style={styles.doneBtnText}>العودة للرئيسية</Text>
+        </Pressable>
+
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function Card({
-  title,
-  value,
-  highlight,
-}: {
-  title: string;
-  value: string;
-  highlight?: boolean;
-}) {
+// 🎨 COMPONENT FOR DETAILS
+function DetailCard({ icon, title, value, color }: any) {
   return (
-    <View style={[styles.card, highlight && styles.highlight]}>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.value}>{value}</Text>
+    <View style={styles.infoCard}>
+      <View style={styles.infoHead}>
+        <Ionicons name={icon} size={20} color={color} />
+        <Text style={[styles.infoTitle, { color: color }]}>{title}</Text>
+      </View>
+      <Text style={styles.infoValue}>{value}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: "#eef7ee",
-  },
-  container: {
-    padding: 16,
-    paddingTop: 10,
-  },
-  headerRow: {
-    flexDirection: "row",
+  safe: { flex: 1, backgroundColor: "#f4f9f4" },
+  headerBar: {
+    flexDirection: "row-reverse",
     alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: "#fff",
+  },
+  backCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#f0f7f0",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: { fontSize: 18, fontWeight: "800", color: "#1b5e20" },
+  container: { padding: 20 },
+  
+  statusCard: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 20,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+  },
+  statusRow: { flexDirection: "row-reverse", justifyContent: "space-between", marginBottom: 12 },
+  statusLabel: { fontSize: 14, color: "#666", fontWeight: "600" },
+  statusValue: { fontSize: 18, fontWeight: "800" },
+  progressBg: { height: 8, backgroundColor: "#eee", borderRadius: 4, overflow: "hidden" },
+  progressFill: { height: "100%", borderRadius: 4 },
+
+  resultCard: {
+    backgroundColor: "#fff",
+    borderRadius: 25,
+    padding: 30,
+    alignItems: "center",
+    marginBottom: 25,
+    borderWidth: 1,
+    borderColor: "#e8f5e9",
+    elevation: 4,
+  },
+  iconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "#2e7d32",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 15,
+  },
+  resultLabel: { fontSize: 14, color: "#888", marginBottom: 5 },
+  resultName: { fontSize: 24, fontWeight: "900", color: "#2e7d32", textAlign: "center" },
+
+  detailsSection: { gap: 15 },
+  infoCard: {
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 18,
+    borderRightWidth: 5,
+  },
+  infoHead: { flexDirection: "row-reverse", alignItems: "center", marginBottom: 8 },
+  infoTitle: { fontWeight: "800", marginRight: 10, fontSize: 16 },
+  infoValue: { color: "#444", textAlign: "right", lineHeight: 22, fontSize: 15 },
+
+  warningBox: {
+    flexDirection: "row-reverse",
+    backgroundColor: "#fff9c4",
+    padding: 15,
+    borderRadius: 12,
+    alignItems: "center",
+    marginTop: 10,
+  },
+  warningText: { flex: 1, marginRight: 10, fontSize: 13, color: "#5d4037", textAlign: "right" },
+
+  doneBtn: {
+    backgroundColor: "#2e7d32",
+    paddingVertical: 16,
+    borderRadius: 18,
+    alignItems: "center",
+    marginTop: 30,
     marginBottom: 20,
   },
-  backBtn: {
-    padding: 6,
-    marginRight: 8,
-  },
-  header: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#2e7d32",
-  },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-  },
-  highlight: {
-    borderWidth: 2,
-    borderColor: "#2e7d32",
-  },
-  title: {
-    fontWeight: "bold",
-    color: "#2e7d32",
-    marginBottom: 6,
-  },
-  value: {
-    color: "#444",
-    lineHeight: 22,
-  },
+  doneBtnText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
 });

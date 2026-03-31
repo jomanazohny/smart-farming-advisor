@@ -1,237 +1,112 @@
 import os
 import tensorflow as tf
 import numpy as np
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+import cv2
 
 # =====================
-# MODEL PATHS
+# 1. PATHS & CONFIG
 # =====================
-MODEL_PATHS = {
-    "wheat": os.path.join(BASE_DIR, "models", "wheat.h5"),
-    "potato": os.path.join(BASE_DIR, "models", "potato.h5"),
-    "mango": os.path.join(BASE_DIR, "models", "mango.h5"),
+MODEL_PATH = "models/egypt_crop_pro_v4.h5"
+CLASSES_PATH = "models/classes_v4.npy"
+
+# =====================
+# 🔁 ARABIC → ENGLISH (optional)
+# =====================
+ARABIC_CROP_MAP = {
+    "مانجو": "mango",
+    "بطاطس": "potato",
+    "قمح": "wheat"
 }
 
 # =====================
-# CLASS NAMES
+# 🔢 ARABIC NUMBERS → ENGLISH
 # =====================
-CLASS_NAMES = {
-    "wheat": [
-        "Brown Rust", "Fusarium head blight", "Healthy", "Mildew", "Mite",
-        "Stem fly", "Yellow Rust", "aphids", "armyworms", "root rot",
-        "septoria leaf blotch", "stem rust", "wheat blast"
-    ],
-    "potato": [
-        "Bacterial wilt", "Blackleg", "Common scab", "Cutworms", "Flea Beetle",
-        "Healthy", "PVY", "aphids", "blackspot bruising", "dry rot",
-        "early_blight", "late_blight", "potato_tuber_moth", "soft rot", "whiteflies"
-    ],
-    "mango": [
-        "Anthracnose", "Bacterial Canker", "DieBack", "Healthy",
-        "Mango Fruit Fly", "Mango Mealybug", "Thrips", "Weevil",
-        "gall midge", "mango_hopper", "powdery mildew", "sooty Mold", "stem-end-rot"
-    ],
-}
+def normalize_number(value):
+    if isinstance(value, str):
+        arabic_to_english = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
+        value = value.translate(arabic_to_english)
+    return float(value)
 
 # =====================
-# DISEASE KNOWLEDGE (ALL CLASSES)
+# 2. MASTER KNOWLEDGE BASE
 # =====================
 DISEASE_KNOWLEDGE = {
-    "wheat": {
-        "brown rust": {
-            "cause": "مرض فطري يصيب أوراق القمح",
-            "treatment": "استخدام مبيد فطري مناسب عند ظهور الأعراض",
-            "prevention": "زراعة أصناف مقاومة والمتابعة المبكرة"
-        },
-        "fusarium head blight": {
-            "cause": "فطر يصيب سنابل القمح في ظروف رطوبة عالية",
-            "treatment": "استخدام مبيد فطري معتمد",
-            "prevention": "تجنب الرطوبة الزائدة والدورة الزراعية"
-        },
-        "mildew": {
-            "cause": "فطر ينمو في ظروف رطوبة مرتفعة",
-            "treatment": "رش مبيد فطري مناسب",
-            "prevention": "تحسين التهوية وتقليل الرطوبة"
-        },
-        "mite": {
-            "cause": "إصابة حشرية تمتص عصارة النبات",
-            "treatment": "استخدام مبيد أكاروسي مناسب",
-            "prevention": "المتابعة الدورية والمكافحة المتكاملة"
-        },
-        "stem fly": {
-            "cause": "حشرة تهاجم ساق القمح",
-            "treatment": "استخدام مبيد حشري مناسب",
-            "prevention": "المتابعة المبكرة وإزالة النباتات المصابة"
-        },
-        "yellow rust": {
-            "cause": "فطر ينتشر في الطقس البارد والرطب",
-            "treatment": "رش مبيد فطري وقائي",
-            "prevention": "زراعة أصناف مقاومة"
-        },
-        "aphids": {
-            "cause": "حشرات ماصة تضعف النبات",
-            "treatment": "استخدام مبيد حشري",
-            "prevention": "المراقبة المبكرة"
-        },
-        "armyworms": {
-            "cause": "يرقات تتغذى على أوراق القمح",
-            "treatment": "استخدام مبيد حشري",
-            "prevention": "المتابعة الدورية"
-        },
-        "root rot": {
-            "cause": "فطر يصيب جذور النبات",
-            "treatment": "تحسين الصرف واستخدام مبيد فطري",
-            "prevention": "تجنب الري الزائد"
-        },
-        "septoria leaf blotch": {
-            "cause": "فطر يسبب بقع على أوراق القمح",
-            "treatment": "رش مبيد فطري",
-            "prevention": "زراعة أصناف مقاومة"
-        },
-        "stem rust": {
-            "cause": "فطر يصيب ساق وأوراق القمح",
-            "treatment": "مبيد فطري مناسب",
-            "prevention": "الدورة الزراعية"
-        },
-        "wheat blast": {
-            "cause": "فطر يصيب سنابل القمح",
-            "treatment": "استخدام مبيد فطري",
-            "prevention": "زراعة أصناف مقاومة"
-        },
-        "healthy": {
-            "cause": "النبات سليم",
-            "treatment": "لا يحتاج علاج",
-            "prevention": "الاستمرار في الرعاية الجيدة"
-        }
-    },
+    "brown rust": {"cause": "فطر يسبب بقع بنية مسحوقية", "treatment": "رش مبيد فطري تيلت (Tilt) 25سم/100لتر", "prevention": "زراعة أصناف مقاومة"},
+    "fusarium head blight": {"cause": "عفن السنابل الفطري", "treatment": "رش مبيد توبسين (Topsin) عند طرد السنابل", "prevention": "تجنب الري وقت التزهير"},
+    "mildew": {"cause": "البياض الدقيقي (بودرة بيضاء)", "treatment": "رش كبريت ميكروني أو مبيد أفوجان", "prevention": "تقليل الكثافة النباتية"},
+    "mite": {"cause": "العنكبوت الأحمر (أكاروس)", "treatment": "رش مبيد أبامكتين متخصص", "prevention": "تجنب التعطيش الشديد"},
+    "stem fly": {"cause": "ذبابة الساق التي تهاجم قلب النبات", "treatment": "رش مبيد حشري جهازي مثل ديميثويت", "prevention": "الزراعة في المواعيد الموصى بها"},
+    "yellow rust": {"cause": "صدأ القمح الأصفر (الأخطر في مصر)", "treatment": "رش فوري بمبيد سومي ايت أو ريكس ديو", "prevention": "المتابعة اليومية فجراً"},
+    "aphids": {"cause": "حشرة المن الماصة للعصارة", "treatment": "رش زيت معدني أو مبيد لانيت", "prevention": "إزالة الحشائش العائلة للمن"},
+    "armyworms": {"cause": "الدودة الجياشة التي تأكل الأوراق", "treatment": "رش مبيد كوراجين أو بستبان", "prevention": "استخدام مصائد فرمونية"},
+    "root rot": {"cause": "أعفان الجذور بسبب زيادة مياه الري", "treatment": "حقن مبيد مونكتين مع ماء الري", "prevention": "تحسين الصرف الزراعي"},
+    "septoria leaf blotch": {"cause": "تبقع الأوراق السبتوري (فطري)", "treatment": "رش مبيد فطرى مانكوزيب", "prevention": "استخدام بذور معتمدة ونظيفة"},
+    "stem rust": {"cause": "صدأ الساق الذي يسبب كسر النبات", "treatment": "رش مبيد فطري جهازي فوراً", "prevention": "الدورة الزراعية المتوازنة"},
+    "wheat blast": {"cause": "مرض فطر اللافحة (يصيب السنابل)", "treatment": "رش مبيدات تحتوي على ستروبيلورين", "prevention": "تعديل مواعيد الزراعة"},
 
-    "potato": {
-        "bacterial wilt": {
-            "cause": "بكتيريا تصيب الجذور",
-            "treatment": "لا يوجد علاج مباشر",
-            "prevention": "الدورة الزراعية"
-        },
-        "blackleg": {
-            "cause": "بكتيريا تصيب الساق",
-            "treatment": "إزالة النباتات المصابة",
-            "prevention": "استخدام تقاوي سليمة"
-        },
-        "common scab": {
-            "cause": "بكتيريا في التربة",
-            "treatment": "تحسين التربة",
-            "prevention": "ضبط درجة حموضة التربة"
-        },
-        "cutworms": {
-            "cause": "يرقات تقطع الساق",
-            "treatment": "مبيد حشري",
-            "prevention": "المراقبة المبكرة"
-        },
-        "flea beetle": {
-            "cause": "حشرة تتغذى على الأوراق",
-            "treatment": "مبيد حشري",
-            "prevention": "المتابعة الدورية"
-        },
-        "late blight": {
-            "cause": "فطر يصيب الأوراق والدرنات",
-            "treatment": "مبيد فطري",
-            "prevention": "تجنب الرطوبة"
-        },
-        "early blight": {
-            "cause": "فطر يصيب الأوراق",
-            "treatment": "رش مبيد فطري",
-            "prevention": "الدورة الزراعية"
-        },
-        "healthy": {
-            "cause": "النبات سليم",
-            "treatment": "لا يحتاج علاج",
-            "prevention": "الاستمرار في الرعاية الجيدة"
-        }
-    },
+    "bacterial wilt": {"cause": "الذبول البكتيري", "treatment": "لا يوجد علاج", "prevention": "منع انتقال المياه"},
+    "early blight": {"cause": "اللفحة المبكرة", "treatment": "رش مبيد فطري", "prevention": "إزالة النباتات المصابة"},
+    "late blight": {"cause": "اللفحة المتأخرة", "treatment": "رش ريدوميل", "prevention": "تجنب الرطوبة العالية"},
 
-    "mango": {
-        "anthracnose": {
-            "cause": "فطر يصيب الأوراق والثمار",
-            "treatment": "مبيد فطري",
-            "prevention": "تقليل الرطوبة"
-        },
-        "bacterial canker": {
-            "cause": "بكتيريا تصيب الشجرة",
-            "treatment": "إزالة الأجزاء المصابة",
-            "prevention": "التقليم الجيد"
-        },
-        "dieback": {
-            "cause": "فطر يسبب جفاف الأفرع",
-            "treatment": "تقليم الأفرع المصابة",
-            "prevention": "تحسين التهوية"
-        },
-        "mango fruit fly": {
-            "cause": "حشرة تصيب الثمار",
-            "treatment": "مصائد حشرية",
-            "prevention": "جمع الثمار المصابة"
-        },
-        "powdery mildew": {
-            "cause": "فطر يظهر كبودرة بيضاء",
-            "treatment": "مبيد فطري",
-            "prevention": "تحسين التهوية"
-        },
-        "healthy": {
-            "cause": "النبات سليم",
-            "treatment": "لا يحتاج علاج",
-            "prevention": "الاستمرار في الرعاية الجيدة"
-        }
-    }
+    "anthracnose": {"cause": "فطر الانثراكنوز", "treatment": "رش نحاس", "prevention": "تقليم الأشجار"},
+    "powdery mildew": {"cause": "البياض الدقيقي", "treatment": "رش كبريت", "prevention": "تهوية جيدة"},
+
+    "healthy": {"cause": "النبات سليم", "treatment": "لا يحتاج علاج", "prevention": "استمرار العناية"}
 }
 
 # =====================
-# LOAD MODELS
+# 3. CORE VLM CLASS
 # =====================
-MODELS = {}
-for crop, path in MODEL_PATHS.items():
-    MODELS[crop] = tf.keras.models.load_model(path)
-    print(f"✅ Loaded model: {crop}")
+class CropVLM:
+    def __init__(self, model_path=MODEL_PATH, classes_path=CLASSES_PATH):
+        print("⏳ Loading Model...")
+        self.model = tf.keras.models.load_model(model_path)
+        self.classes = np.load(classes_path, allow_pickle=True)
+        print("✅ Model Loaded")
 
-# =====================
-# UTIL
-# =====================
-def normalize(name: str) -> str:
-    return name.lower().replace("_", " ").strip()
+    def preprocess_inputs(self, image_path, temp, humidity, age):
+        # Normalize numbers (Arabic → English)
+        temp = normalize_number(temp)
+        humidity = normalize_number(humidity)
+        age = normalize_number(age)
 
-# =====================
-# PREDICTION
-# =====================
-def predict_disease(image_path, crop):
-    model = MODELS[crop]
+        # Image
+        img = cv2.imread(image_path)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = cv2.resize(img, (224, 224)) / 255.0
+        img_batch = np.expand_dims(img, axis=0)
 
-    img = tf.keras.utils.load_img(image_path, target_size=(224, 224))
-    img = tf.keras.utils.img_to_array(img)
-    img = np.expand_dims(img, axis=0)
-    img = tf.keras.applications.efficientnet.preprocess_input(img)
+        # Scale inputs
+        meta_batch = np.array([[temp/50.0, humidity/100.0, age/120.0]], dtype='float32')
 
-    preds = model.predict(img, verbose=0)[0]
-    idx = int(np.argmax(preds))
-    return CLASS_NAMES[crop][idx], float(preds[idx])
+        return img_batch, meta_batch
 
-# =====================
-# VLM FUNCTION (FINAL)
-# =====================
-def vlm_predict_and_explain(image_path, crop_type):
-    disease, confidence = predict_disease(image_path, crop_type)
-    confidence_pct = round(confidence * 100, 2)
+    def predict_and_explain(self, image_path, temp, humidity, age):
+        img_in, meta_in = self.preprocess_inputs(image_path, temp, humidity, age)
 
-    certainty = (
-        "ثقة عالية في التشخيص" if confidence >= 0.85
-        else "ثقة متوسطة في التشخيص" if confidence >= 0.6
-        else "ثقة منخفضة – يفضل مراجعة خبير"
-    )
+        preds = self.model.predict({
+            "image_input": img_in,
+            "meta_input": meta_in
+        }, verbose=0)[0]
 
-    info = DISEASE_KNOWLEDGE[crop_type].get(normalize(disease))
+        idx = np.argmax(preds)
+        raw_label = self.classes[idx]
+        confidence = float(preds[idx])
 
-    return {
-        "disease": disease,
-        "confidence": confidence_pct,
-        "certainty": certainty,
-        "cause": info["cause"],
-        "treatment": info["treatment"],
-        "prevention": info["prevention"],
-    }
+        lookup_label = raw_label.lower().replace("_", " ")
+
+        info = {"cause": "غير محدد", "treatment": "استشر خبير", "prevention": "نظافة الحقل"}
+        for key in DISEASE_KNOWLEDGE:
+            if key in lookup_label:
+                info = DISEASE_KNOWLEDGE[key]
+                break
+
+        return {
+            "disease_name": raw_label.replace("_", " ").title(),
+            "confidence": float(confidence * 100),  # ✅ NUMBER not string
+            "arabic_explanation": {
+                "السبب": info["cause"],
+                "العلاج": info["treatment"],
+                "الوقاية": info["prevention"]
+            }
+        }

@@ -1,15 +1,26 @@
-const BASE_URL = "http://192.168.1.17:8000"; // your laptop IP
+const BASE_URL = "http://192.168.1.17:8000";
 
 type DiagnoseParams = {
   imageUri: string;
-  crop: string;
+  temp: number;
+  humidity: number;
+  age: number;
 };
 
-export async function diagnoseCrop({ imageUri, crop }: DiagnoseParams) {
+export async function diagnoseCrop({
+  imageUri,
+  temp,
+  humidity,
+  age,
+}: DiagnoseParams) {
   const formData = new FormData();
 
   formData.append("user_id", "mobile_user");
-  formData.append("crop", crop);
+
+  // ✅ NEW inputs
+  formData.append("temp", String(temp));
+  formData.append("humidity", String(humidity));
+  formData.append("age", String(age));
 
   formData.append("image", {
     uri: imageUri,

@@ -16,7 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Speech from "expo-speech";
 
 // ❗ IMPORTANT: Double-check your laptop's IP address (192.168.1.3)
-const API_URL = "http://192.168.1.3:8000/chat"; 
+const API_URL = "http://172.20.10.2:8000/chat"; 
 
 export default function MarketScreen() {
   const [input, setInput] = useState("");

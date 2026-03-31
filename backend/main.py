@@ -1,29 +1,28 @@
 import os
 import uuid
 import shutil
-from fastapi import FastAPI, UploadFile, File, Form
+import numpy as np
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from google import genai
 
-# ✅ YOUR ORIGINAL DATABASE IMPORTS
+# استيراد ملفات مشروعك الخاصة
 from database import (
     init_db,
     create_user_if_not_exists,
     save_diagnosis,
     get_user_history
 )
-
-# ✅ YOUR ORIGINAL VLM IMPORT
 from vlm import CropVLM
 
-# Load variables from .env (Make sure your GEMINI_API_KEY is in there!)
+# تحميل متغيرات البيئة من ملف .env
 load_dotenv()
 
 app = FastAPI(title="Smart Agriculture Backend")
 
-# ✅ Allow the Mobile App to connect
+# إعدادات CORS للسماح لتطبيق الموبايل بالاتصال
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,38 +31,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ✅ Initialize System
+# تهيئة النظام عند التشغيل
 init_db()
 vlm_model = CropVLM()
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# ✅ Initialize Gemini Client
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 class ChatRequest(BaseModel):
     message: str
 
 # ==========================================
-# 🤖 NEW: CHATBOT ENDPOINT (For Market Page)
+# 🤖 نظام المحادثة الآلي
 # ==========================================
 @app.post("/chat")
 async def chat_with_ai(request: ChatRequest):
     try:
-        # Specialized prompt for your agriculture project
-        prompt = f"أنت مساعد زراعي خبير. أجب على هذا السؤال باختصار وباللغة العربية: {request.message}"
-        
+        prompt = f"أنت مساعد زراعي خبير ومستشار تقني. أجب على هذا السؤال باختصار ووضوح باللغة العربية: {request.message}"
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash",
             contents=prompt
         )
         return {"reply": response.text}
     except Exception as e:
         print(f"Chat Error: {e}")
-        return {"reply": "عذراً، واجهت مشكلة في الاتصال بالخادم."}
+        return {"reply": "عذراً، واجهت مشكلة في الاتصال بخدمة الذكاء الاصطناعي."}
 
 # ==========================================
-# 🌱 ORIGINAL: DIAGNOSE ENDPOINT
+# 🌱 نظام التشخيص (تم إصلاح الخطأ البرمجي هنا)
 # ==========================================
 @app.post("/diagnose")
 async def diagnose(
@@ -74,53 +70,64 @@ async def diagnose(
     region: str = Form("unknown"),
     image: UploadFile = File(...)
 ):
-    create_user_if_not_exists(user_id)
+    try:
+        # 1. التأكد من وجود المستخدم
+        create_user_if_not_exists(user_id)
 
-    # Save uploaded image
-    image_path = os.path.join(
-        UPLOAD_DIR,
-        f"{uuid.uuid4()}_{image.filename}"
-    )
-    with open(image_path, "wb") as buffer:
-        shutil.copyfileobj(image.file, buffer)
+        # 2. حفظ الصورة
+        file_extension = os.path.splitext(image.filename)[1]
+        image_name = f"{uuid.uuid4()}{file_extension}"
+        image_path = os.path.join(UPLOAD_DIR, image_name)
+        
+        with open(image_path, "wb") as buffer:
+            shutil.copyfileobj(image.file, buffer)
 
-    # Call your VLM model logic
-    result = vlm_model.predict_and_explain(
-        image_path=image_path,
-        temp=temp,
-        humidity=humidity,
-        age=age
-    )
+        # 3. تشغيل التشخيص (VLM)
+        result = vlm_model.predict_and_explain(
+            image_path=image_path, 
+            temp=temp, 
+            humidity=humidity, 
+            age=age
+        )
 
-    disease = result["disease_name"]
-    confidence = result["confidence"]
-    explanation = result["arabic_explanation"]
+        # 4. تجهيز البيانات
+        disease = result["disease_name"]
+        # تحويل الدقة لنسبة مئوية (0-100) لواجهة التطبيق
+        confidence_pct = result["confidence"] * 100 
+        explanation = result["arabic_explanation"]
 
-    cause = explanation["السبب"]
-    treatment = explanation["العلاج"]
-    prevention = explanation["الوقاية"]
+        # 5. حفظ في قاعدة البيانات (اختياري ولكن مفيد للسجل)
+        save_diagnosis(
+            user_id=user_id,
+            crop="unknown",
+            region=region,
+            disease=disease,
+            confidence=confidence_pct,
+            explanation=str(explanation)
+        )
 
-    # Save to Database
-    explanation_text = f"السبب: {cause}\nالعلاج: {treatment}\nالوقاية: {prevention}"
-    save_diagnosis(
-        user_id=user_id,
-        crop="unknown",
-        region=region,
-        disease=disease,
-        confidence=confidence,
-        explanation=explanation_text
-    )
-
-    return {
-        "disease_name": disease,
-        "confidence": confidence,
-        "arabic_explanation": {
-            "السبب": cause,
-            "العلاج": treatment,
-            "الوقاية": prevention
+        # 6. إرجاع النتيجة النهائية
+        return {
+            "disease_name": disease,
+            "confidence": confidence_pct,
+            "arabic_explanation": explanation
         }
-    }
 
+    except Exception as e:
+        print(f"Diagnosis Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==========================================
+# 📜 استرجاع سجل التشخيصات
+# ==========================================
 @app.get("/history/{user_id}")
 def history(user_id: str):
-    return get_user_history(user_id)
+    try:
+        return get_user_history(user_id)
+    except Exception as e:
+        print(f"History Error: {e}")
+        return []
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

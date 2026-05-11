@@ -41,3 +41,19 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Python
+venv/
+__pycache__/
+
+# Node
+node_modules/
+
+# Env
+.env
+
+# AI Models
+*.h5
+*.keras
+*.pt
+*.pth

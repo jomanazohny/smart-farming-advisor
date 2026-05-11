@@ -1,4 +1,5 @@
-const BASE_URL = "http://172.20.10.2:8000"; // 🟢 IMPORTANT: CHANGE TO YOUR CURRENT IP
+// services/api.ts
+export const BASE_URL = "https://beige-groups-design.loca.lt"; 
 
 type DiagnoseParams = {
   imageUri: string;

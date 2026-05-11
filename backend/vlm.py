@@ -3,54 +3,15 @@ import tensorflow as tf
 import numpy as np
 import cv2
 
-# --- الإعدادات (يجب أن تطابق كود تدريب Kaggle) ---
-MODEL_PATH = "models/egypt_crop_pro_v4.h5"
+# =====================
+# 1. PATHS & CONFIG
+# =====================
+# Ensure these files are in your working directory after the Kaggle commit finishes
+MODEL_PATH = "models/best_model.h5"
 CLASSES_PATH = "models/classes_v4.npy"
-IMG_SIZE = (300, 300)
-
-# قاموس ترجمة أسماء الأمراض من الإنجليزية (الموجودة في الموديل) إلى العربية
-DISEASE_TRANSLATION = {
-    "brown rust": "صدأ القمح البني",
-    "fusarium head blight": "عفن السنابل (فيوزاريوم)",
-    "mildew": "البياض الدقيقي",
-    "mite": "العنكبوت الأحمر (أكاروس)",
-    "stem fly": "ذبابة الساق",
-    "yellow rust": "صدأ القمح الأصفر",
-    "aphids": "حشرة المن",
-    "armyworms": "الدودة الجياشة",
-    "root rot": "أعفان الجذور",
-    "septoria leaf blotch": "تبقع الأوراق السبتوري",
-    "stem rust": "صدأ الساق",
-    "wheat blast": "لفحة القمح",
-    "bacterial wilt": "الذبول البكتيري",
-    "blackleg": "الساق السوداء",
-    "common scab": "الجرب العادي",
-    "cutworms": "الديدان القارضة",
-    "flea beetle": "خنفساء البراغيث",
-    "pvy": "فيروس البطاطس Y",
-    "blackspot bruising": "كدمات البقع السوداء",
-    "dry rot": "العفن الجاف",
-    "early blight": "اللفحة المبكرة",
-    "late blight": "اللفحة المتأخرة",
-    "potato tuber moth": "سوسة درنات البطاطس",
-    "soft rot": "العفن البكتيري الطري",
-    "whiteflies": "الذبابة البيضاء",
-    "anthracnose": "الأنثراكنوز",
-    "bacterial canker": "التقرح البكتيري",
-    "dieback": "موت الأفرع (Dieback)",
-    "mango fruit fly": "ذبابة فاكهة المانجو",
-    "mango mealybug": "البق الدقيقي",
-    "thrips": "حشرة التربس",
-    "weevil": "سوسة بذور المانجو",
-    "gall midge": "ذبابة الجال",
-    "mango hopper": "نطاطات المانجو",
-    "powdery mildew": "البياض الدقيقي",
-    "sooty mold": "العفن الهبابي الأسود",
-    "stem-end-rot": "عفن نهاية الثمرة",
-    "healthy": "نبات سليم"
-}
-
-# قاعدة البيانات المعرفية التي أرسلتها
+# =====================
+# 2. MASTER KNOWLEDGE BASE (41 CLASSES)
+# =====================
 DISEASE_KNOWLEDGE = {
     # WHEAT
     "brown rust": {"cause": "فطر يسبب بقع بنية مسحوقية", "treatment": "رش مبيد فطري تيلت (Tilt) 25سم/100لتر", "prevention": "زراعة أصناف مقاومة"},
@@ -75,7 +36,7 @@ DISEASE_KNOWLEDGE = {
     "pvy": {"cause": "فيروس البطاطس Y (ينتقل بالمن)", "treatment": "لا يوجد (يجب مكافحة حشرة المن)", "prevention": "استخدام شتلات خالية من الفيروس"},
     "blackspot bruising": {"cause": "كدمات سوداء بسبب سوء التداول", "treatment": "تحسين عمليات النقل والتعبئة", "prevention": "الحصاد عند اكتمال النضج فقط"},
     "dry rot": {"cause": "العفن الجاف للدرنات", "treatment": "تطهير المخازن والصناديق", "prevention": "تجنب تجريح البطاطس أثناء الحصاد"},
-    "early blight": {"cause": "اللفحة المبكرة (فطري)", "treatment": "رش مبيد سكور أو مانكوزيب", "prevention": "التخلص من النباتات المصابة"},
+    "early blight": {"cause": "اللفحة المبكرة (فطرية)", "treatment": "رش مبيد سكور أو مانكوزيب", "prevention": "التخلص من النباتات المصابة"},
     "late blight": {"cause": "اللفحة المتأخرة (بسبب الرطوبة والبرودة)", "treatment": "رش مبيد ريدوميل جولد أو كوبروزات", "prevention": "تجنب الري بالرش ليلاً"},
     "potato tuber moth": {"cause": "سوسة درنات البطاطس", "treatment": "رش مبيد بروتكتو (Protecto)", "prevention": "الترديم العميق وتغطية الشقوق"},
     "soft rot": {"cause": "العفن البكتيري الطري", "treatment": "تهوية المخازن وتقليل الرطوبة", "prevention": "تجفيف الدرنات قبل التخزين"},
@@ -97,85 +58,214 @@ DISEASE_KNOWLEDGE = {
     "healthy": {"cause": "النبات سليم وبحالة جيدة", "treatment": "لا يتطلب علاج كيميائي", "prevention": "الاستمرار في الري والتسميد المتوازن"}
 }
 
+# =====================
+# 3. CORE VLM CLASS
+# =====================
 class CropVLM:
-    def __init__(self):
-        print("⏳ Loading Pro-Level Multimodal Model...")
+
+    def __init__(self, model_path, classes_path):
+
+        print("⏳ Loading Multimodal Brain...")
+
         try:
-            self.model = tf.keras.models.load_model(MODEL_PATH)
-            self.classes = np.load(CLASSES_PATH, allow_pickle=True)
-            print(f"✅ Model Ready. Target: {IMG_SIZE}")
+            self.model = tf.keras.models.load_model(model_path)
+
+            self.classes = np.load(
+                classes_path,
+                allow_pickle=True
+            )
+
+            print("✅ System Ready.")
+
         except Exception as e:
-            print(f"❌ Error: {e}")
 
-    def preprocess_inputs(self, image_path, temp, humidity, age):
-        # 1. معالجة الصورة (Resize to 300x300)
+            print(f"❌ Error loading models: {e}")
+
+    # =====================
+    # PREPROCESSING
+    # =====================
+    def preprocess_inputs(
+        self,
+        image_path,
+        temp,
+        humidity,
+        age
+    ):
+
+        # Image
         img = cv2.imread(image_path)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img = cv2.resize(img, IMG_SIZE)
-        img_array = np.array(img, dtype='float32') / 255.0
-        img_batch = np.expand_dims(img_array, axis=0)
 
-        # 2. تطبيع البيانات البيئية (Scaling)
-        # استخدام نطاقات تقريبية لضمان قيم بين 0 و 1
-        s_temp = (float(temp) - 10.0) / 35.0
-        s_hum = (float(humidity) - 20.0) / 80.0
-        s_age = float(age) / 120.0
-        
-        meta_values = np.clip([s_temp, s_hum, s_age], 0, 1)
-        meta_batch = np.array([meta_values], dtype='float32')
+        img = cv2.cvtColor(
+            img,
+            cv2.COLOR_BGR2RGB
+        )
+
+        # ✅ FIXED SIZE
+        img = cv2.resize(img, (300, 300))
+
+        img = img / 255.0
+
+        img_batch = np.expand_dims(
+            img,
+            axis=0
+        )
+
+        # Metadata normalization
+        meta_batch = np.array(
+            [[
+                temp / 50.0,
+                humidity / 100.0,
+                age / 120.0
+            ]],
+            dtype='float32'
+        )
 
         return img_batch, meta_batch
 
-    def predict_and_explain(self, image_path, temp, humidity, age):
-        try:
-            img_in, meta_in = self.preprocess_inputs(image_path, temp, humidity, age)
-            
-            # Predict using the named inputs from your training script
-            preds = self.model.predict({
-                "image_input": img_in, 
+    # =====================
+    # MAIN PREDICTION
+    # =====================
+    def predict_and_explain(
+        self,
+        image_path,
+        temp,
+        humidity,
+        age
+    ):
+
+        img_in, meta_in = self.preprocess_inputs(
+            image_path,
+            temp,
+            humidity,
+            age
+        )
+
+        preds = self.model.predict(
+            {
+                "image_input": img_in,
                 "meta_input": meta_in
-            }, verbose=0)[0]
+            },
+            verbose=0
+        )[0]
 
-            idx = np.argmax(preds)
-            confidence = float(preds[idx])
-            
-            # --- STEP A: CLEAN THE KEY ---
-            # Model output 'Yellow_Rust' -> cleaned 'yellow rust'
-            raw_label = str(self.classes[idx]).lower().replace("_", " ").strip()
+        idx = np.argmax(preds)
 
-            # --- STEP B: THE "RANDOM PHOTO" FIX ---
-            # If the model is < 45% sure, it's likely a random object
-            if confidence < 0.45:
-                return {
-                    "disease_name": "غير معروف",
-                    "confidence": confidence,
-                    "arabic_explanation": {
-                        "السبب": "لم يتم التعرف على ورقة محصول (قمح، بطاطس، مانجو) بشكل مؤكد.",
-                        "العلاج": "يرجى تصوير الورقة بوضوح في إضاءة جيدة.",
-                        "الوقاية": "تأكد من أن الكاميرا تركز على الورقة المصابة فقط."
-                    }
-                }
+        raw_label = self.classes[idx]
 
-            # --- STEP C: TRANSLATION ---
-            # Match 'yellow rust' to your Arabic dictionary
-            arabic_name = DISEASE_TRANSLATION.get(raw_label, raw_label.title())
+        confidence = float(preds[idx])
 
-            # --- STEP D: KNOWLEDGE BASE ---
-            info = DISEASE_KNOWLEDGE.get(raw_label, {
-                "cause": "إصابة غير مسجلة بالتفصيل.",
-                "treatment": "يرجى استشارة خبير زراعي.",
-                "prevention": "حافظ على نظافة الحقل."
-            })
+        # Normalize label
+        lookup_label = raw_label.lower().replace("_", " ")
 
-            return {
-                "disease_name": arabic_name,
-                "confidence": confidence,
-                "arabic_explanation": {
-                    "السبب": info["cause"],
-                    "العلاج": info["treatment"],
-                    "الوقاية": info["prevention"]
-                }
+        # Default knowledge
+        info = {
+            "cause": "غير محدد",
+            "treatment": "استشر خبيراً",
+            "prevention": "نظافة الحقل"
+        }
+
+        for key in DISEASE_KNOWLEDGE:
+
+            if key in lookup_label:
+
+                info = DISEASE_KNOWLEDGE[key]
+
+                break
+
+        # Final response
+        return {
+
+            "disease_name":
+                raw_label.replace("_", " ").title(),
+
+            # ✅ FLOAT not string
+            "confidence": confidence,
+
+            "arabic_explanation": {
+
+                "السبب": info["cause"],
+
+                "العلاج": info["treatment"],
+
+                "الوقاية": info["prevention"]
             }
-        except Exception as e:
-            print(f"VLM Error: {e}")
-            return {"disease_name": "خطأ", "confidence": 0, "arabic_explanation": {}}
+        }
+
+    # =====================
+    # SMART ADVISOR
+    # =====================
+    def generate_behavior_advice(
+        self,
+        disease,
+        moisture,
+        temp,
+        humidity,
+        crop,
+        region
+    ):
+
+        advice = []
+
+        # =====================
+        # REGIONAL LOGIC
+        # =====================
+
+        # Mango / Upper Egypt
+        if crop.lower() == "mango":
+
+            if "صعيد" in region:
+
+                if temp > 38:
+
+                    advice.append(
+                        "⚠️ الحرارة مرتفعة في صعيد مصر. "
+                        "يُفضل الري مساءً لتقليل إجهاد أشجار المانجو."
+                    )
+
+        # Wheat / Delta
+        if crop.lower() == "wheat":
+
+            if "دلتا" in region:
+
+                if humidity > 80:
+
+                    advice.append(
+                        "⚠️ الرطوبة مرتفعة في الدلتا. "
+                        "يزداد خطر الصدأ الأصفر."
+                    )
+
+        # Potato / Humidity
+        if crop.lower() == "potato":
+
+            if humidity > 85:
+
+                advice.append(
+                    "⚠️ الرطوبة العالية قد تزيد خطر "
+                    "اللفحة المتأخرة في البطاطس."
+                )
+
+        # =====================
+        # SOIL MOISTURE LOGIC
+        # =====================
+
+        if moisture < 20:
+
+            advice.append(
+                f"💧 التربة جافة ({moisture}%). "
+                "ابدأ الري فوراً."
+            )
+
+        elif moisture > 45:
+
+            advice.append(
+                f"🚫 رطوبة التربة مرتفعة ({moisture}%). "
+                "قلل الري لتجنب أعفان الجذور."
+            )
+
+        else:
+
+            advice.append(
+                f"✅ رطوبة التربة مناسبة ({moisture}%)."
+            )
+
+        return " ".join(advice)

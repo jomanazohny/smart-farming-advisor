@@ -63,3 +63,6 @@ backend/uploads/
 .env
 node_modules/
 __pycache__/
+
+*.ipynb
+.ipynb_checkpoints/

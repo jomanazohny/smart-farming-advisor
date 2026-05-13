@@ -306,40 +306,6 @@ export default function HomeScreen() {
           </Text>
 
         </View>
-
-        {/* QUICK ACTIONS */}
-        <View style={styles.actionsRow}>
-
-          <Pressable style={styles.actionButton}>
-
-            <Ionicons
-              name="camera"
-              size={24}
-              color="#fff"
-            />
-
-            <Text style={styles.actionText}>
-              تشخيص مرض
-            </Text>
-
-          </Pressable>
-
-          <Pressable style={styles.actionButton}>
-
-            <Ionicons
-              name="chatbubble"
-              size={24}
-              color="#fff"
-            />
-
-            <Text style={styles.actionText}>
-              المساعد الذكي
-            </Text>
-
-          </Pressable>
-
-        </View>
-
       </ScrollView>
 
     </SafeAreaView>

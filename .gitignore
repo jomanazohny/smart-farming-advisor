@@ -58,3 +58,5 @@ node_modules/
 *.pt
 *.pth
 
+backend/uploads/
+*.ipynb_checkpoints

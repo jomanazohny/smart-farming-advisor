@@ -59,4 +59,7 @@ node_modules/
 *.pth
 
 backend/uploads/
-*.ipynb_checkpoints
+*.h5
+.env
+node_modules/
+__pycache__/
